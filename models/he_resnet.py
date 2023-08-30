@@ -1,8 +1,8 @@
-
 # -*- coding:utf-8 -*-
 import torch.nn as nn
 import torch
 import torch.nn.functional as F
+from torch.utils.data import DataLoader
 
 cfg = {
     12: [1, 1, 1, 1, 1],
@@ -149,3 +149,56 @@ class HE_Classifier(nn.Module):
         x = self._gap(x)
         x = self._final_1x1_conv(x)
         return x
+
+# Step 1: Data Preparation
+# Assuming you have your own dataset class (replace this with your actual implementation)
+train_dataset = YourDataset(...)
+val_dataset = YourDataset(...)
+batch_size = 32
+train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+val_loader = DataLoader(val_dataset, batch_size=batch_size)
+
+# Step 2: Define Loss Function
+criterion = torch.nn.BCEWithLogitsLoss()
+
+# Step 3: Instantiate Model
+model = HE_Classifier(input_size=512, input_channels=3, sphereface_size=12)
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model.to(device)
+
+# Step 4: Define Optimizer
+optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+# Step 5: Training Loop
+num_epochs = 10
+log_interval = 10
+
+for epoch in range(num_epochs):
+    model.train()
+    for batch_idx, (data, target) in enumerate(train_loader):
+        data, target = data.to(device), target.to(device)
+        
+        optimizer.zero_grad()
+        output = model(data)
+        loss = criterion(output, target)
+        loss.backward()
+        optimizer.step()
+        
+        if batch_idx % log_interval == 0:
+            print(f"Epoch {epoch}, Batch {batch_idx}, Loss: {loss.item()}")
+
+    # Step 6: Validation Loop
+    model.eval()
+    val_loss = 0
+    correct = 0
+    with torch.no_grad():
+        for data, target in val_loader:
+            data, target = data.to(device), target.to(device)
+            output = model(data)
+            val_loss += criterion(output, target).item()
+            pred = (output > 0).float()  # Convert logits to binary predictions
+            correct += pred.eq(target.view_as(pred)).sum().item()
+
+    val_loss /= len(val_loader.dataset)
+    accuracy = correct / len(val_loader.dataset)
+    print(f"Validation Loss: {val_loss}, Accuracy: {accuracy}")
