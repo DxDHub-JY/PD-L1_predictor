@@ -1,0 +1,134 @@
+from imgaug import augmenters as iaa
+import cv2
+import os
+import shutil
+import random
+
+#Root file path of images to augment
+Image = '/home/dxd_jy/joel/proj/Image Processing/Images/'
+training_directory = 'Image Processing/Training_Images'
+training1_directory = 'Image Processing/Training_Images/Set_1'
+training2_directory = 'Image Processing/Training_Images/Set_2'
+training3_directory = 'Image Processing/Training_Images/Set_3'
+training4_directory = 'Image Processing/Training_Images/Set_4'
+training5_directory = 'Image Processing/Training_Images/Set_5'
+#training_dirs = [f'Image Processing/Training_Images/Set_{i}' for i in range(1, 6)]
+testing_directory = 'Image Processing/Testing_Images'
+
+def remove_img(path):
+    # List all the files in the directory
+    files = os.listdir(path)
+
+    # Iterate over the files and delete images
+    for file in files:
+        if file.endswith(('.jpg')):
+            file_path = os.path.join(path, file)
+            os.remove(file_path)
+
+def list_files_with_extension(directory, file_extension='.jpg'):
+    return [f for f in os.listdir(directory) if f.endswith(file_extension)]
+
+def create_directory(directory):
+    os.makedirs(directory, exist_ok=True)
+
+def sort_img(folder):
+    path_to_remove = [testing_directory,training_directory,training1_directory,training2_directory,training3_directory,training4_directory,training5_directory] ### Remove previous records of images ###
+    for x in path_to_remove:
+        if os.path.exists(x):
+            remove_img(x)
+        create_directory(x)
+
+    # List all the image files in the source directory
+    image_files = list_files_with_extension(folder)
+
+    # Calculate the number of images for the 75% and 25% splits
+    total_images = len(image_files)
+    split_75_count = int(0.75 * total_images)
+    split_25_count = total_images - split_75_count
+    split_20_count = int(0.20 * split_75_count)
+
+    # Randomly shuffle the list of image files
+    random.shuffle(image_files)
+
+    # Split and copy images to the destination directories
+    listdir = [training1_directory, training2_directory, training3_directory, training4_directory, training5_directory]
+    listdirtemp = listdir[:]
+    for i, image_file in enumerate(image_files):
+        source_path = os.path.join(folder, image_file)
+        if i < split_75_count:
+            if i < split_20_count:
+                destination_path = os.path.join(training1_directory, image_file)
+            elif split_20_count <= i < split_20_count*2:
+                destination_path = os.path.join(training2_directory, image_file)
+            elif split_20_count*2 <= i < split_20_count*3:
+                destination_path = os.path.join(training3_directory, image_file)
+            elif split_20_count*3 <= i < split_20_count*4:
+                destination_path = os.path.join(training4_directory, image_file)
+            elif split_20_count*4 <= i < split_20_count*5:
+                destination_path = os.path.join(training5_directory, image_file)
+            else:
+                random_training_directory = random.choice(listdirtemp)
+                destination_path = os.path.join(random_training_directory, image_file)
+                listdirtemp.remove(random_training_directory)
+        else:
+            destination_path = os.path.join(testing_directory, image_file)
+        shutil.copyfile(source_path, destination_path)
+
+    count = [0,0,0,0,0]
+    for x in range(len(listdir)):
+        count[x] = len(list_files_with_extension(listdir[x]))
+
+    print(f"Number of images in Training: {split_75_count} ({(split_75_count/total_images)*100:.2f}%)"
+            + f"\n      -> Set 1: {count[0]}" 
+            + f"\n      -> Set 2: {count[1]}"
+            + f"\n      -> Set 3: {count[2]}"
+            + f"\n      -> Set 4: {count[3]}"
+            + f"\n      -> Set 5: {count[4]}"
+        + f"\nNumber of images in Testing: {split_25_count} ({(split_25_count/total_images)*100:.2f}%)"
+        + f"\nTotal images: {total_images}")
+
+
+def main():
+    #List of all jpg files into list
+    image_files = []
+
+    for filename in os.listdir(Image):
+        if os.path.isfile(os.path.join(Image, filename)):
+            image_files.append(filename)
+
+    image_paths = [Image + filename for filename in image_files]
+
+    #Open the images
+    images = [cv2.imread(path) for path in image_paths] 
+
+    #Parameters for image augmentation
+    augment1 = iaa.Sequential([ 
+        iaa.CropToFixedSize(width=1440, height=1440, position="center"),
+        iaa.Crop(px=(0, 512), keep_size=False),
+        iaa.Resize({"height": 512, "width": 512}), #Resize to 512x512 px
+        iaa.Fliplr(0.5),  # Random horizontal flip with 50% probability
+        iaa.Flipud(0.5),  # Random vertical flip with 50% probability
+        iaa.Affine(rotate=(0, 359)),  # Random rotation between 0 and 359 degrees
+        iaa.GammaContrast((0.7, 1.3)),  # Gamma correction for contrast adjustment
+        iaa.MultiplySaturation((0.7, 1.3)),  # Adjust saturation
+        iaa.ChangeColorTemperature((3000, 20000)),  # Adjust color temperature
+        iaa.AdditiveGaussianNoise(scale=(0, 0.1*255)),  # Gaussian noise with variable scale
+        iaa.GaussianBlur(sigma=(0, 1.0))  # Gaussian blur with variable sigma
+    ], deterministic=True)
+
+    #Apply augmentation to images
+    augmented_images = [augment1.augment_image(img) for img in images for _ in range(5)]
+    
+    #Output folder path for the images 
+    create_directory("Image Processing/temp")
+    output_folder = '/home/dxd_jy/joel/proj/Image Processing/temp'
+
+    #Create the augmented images and save to output folder
+    for i, augmented_image in enumerate(augmented_images):
+        output_path = os.path.join(output_folder, f'aug_image_{i+1}.jpg')
+        cv2.imwrite(output_path, augmented_image)
+    sort_img(output_folder)
+    shutil.rmtree(output_folder)
+
+if __name__ == "__main__":
+    main()
